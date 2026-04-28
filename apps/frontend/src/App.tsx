@@ -2069,6 +2069,21 @@ function getMediaFallbackText(message: Message, assetError?: string | null, fall
   return assetError ?? mediaFallbackPreviewText(message, fallbackLabel);
 }
 
+function buildInlineThumbnailSource(thumbnailBase64?: string | null, mime?: string | null) {
+  if (!thumbnailBase64) return null;
+  const raw = thumbnailBase64.trim();
+  if (!raw) return null;
+
+  if (/^data:/i.test(raw)) {
+    return raw;
+  }
+
+  const normalized = raw.replace(/\s+/g, '');
+  if (!normalized) return null;
+
+  return `data:${mime ?? 'image/jpeg'};base64,${normalized}`;
+}
+
 function humanizeConversationSuffix(jid?: string | null) {
   if (!jid) return null;
   const normalized = String(jid).trim();

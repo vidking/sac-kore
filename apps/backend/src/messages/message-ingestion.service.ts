@@ -26,7 +26,7 @@ import { RedisService } from '../realtime/redis.service';
 import { WahaAdapterService } from '../waha/waha-adapter.service';
 import { WahaWebhookEvent } from '../waha/waha.types';
 
-const realtimeConversationPreviewInclude = {
+const realtimeConversationPreviewInclude: any = {
   channel: true,
   contact: {
     select: {
@@ -93,9 +93,9 @@ const realtimeConversationPreviewInclude = {
       },
     },
   },
-} satisfies Prisma.ConversationInclude;
+};
 
-const richMessageSelect = {
+const richMessageSelect: any = {
   id: true,
   status: true,
   mediaType: true,
@@ -112,7 +112,7 @@ const richMessageSelect = {
   fetchError: true,
   sha256: true,
   size: true,
-} satisfies Prisma.MediaSelect;
+};
 
 @Injectable()
 export class MessageIngestionService {
@@ -329,7 +329,6 @@ export class MessageIngestionService {
           ackStatus: ackStatus === AckStatus.unknown ? existing.ackStatus : ackStatus,
           providerTimestamp,
           senderJid,
-          senderName: normalizedMessage.senderName,
           participantJid: normalizedMessage.participantJid,
           reactionEmoji: normalizedMessage.reaction.emoji,
           reactionTargetExternalMessageId: normalizedMessage.reaction.targetExternalMessageId,
@@ -367,14 +366,17 @@ export class MessageIngestionService {
       );
 
       if (normalizedMessage.media) {
-        await this.createOrUpdateMediaReference(updated.id, normalizedMessage.media, {
-          mediaType: type,
-          caption: normalizedMessage.caption,
-          providerMessageId: normalizedMessage.wahaMessageId,
-          providerMediaId: normalizedMessage.media.providerMediaId,
-          mediaKey: normalizedMessage.media.mediaKey,
-          thumbnailBase64: normalizedMessage.media.thumbnailBase64,
-        });
+        await this.createOrUpdateMediaReference(
+          updated.id,
+          {
+            ...normalizedMessage.media,
+            mediaType: type,
+            caption: normalizedMessage.caption,
+          },
+          {
+            mediaType: type,
+          },
+        );
       }
 
       await this.realtime.publish(
@@ -485,14 +487,17 @@ export class MessageIngestionService {
     });
 
     if (normalizedMessage.media) {
-      await this.createOrUpdateMediaReference(message.id, normalizedMessage.media, {
-        mediaType: type,
-        caption: normalizedMessage.caption,
-        providerMessageId: normalizedMessage.wahaMessageId,
-        providerMediaId: normalizedMessage.media.providerMediaId,
-        mediaKey: normalizedMessage.media.mediaKey,
-        thumbnailBase64: normalizedMessage.media.thumbnailBase64,
-      });
+      await this.createOrUpdateMediaReference(
+        message.id,
+        {
+          ...normalizedMessage.media,
+          mediaType: type,
+          caption: normalizedMessage.caption,
+        },
+        {
+          mediaType: type,
+        },
+      );
     }
 
     const freshConversation = await this.prisma.conversation.findUnique({
@@ -689,6 +694,7 @@ export class MessageIngestionService {
       caption: string | null;
       error: string | null;
     },
+    context: { mediaType?: string | null } = {},
   ) {
     const fetchStatus = mediaInput.url
       ? 'pending'
@@ -700,40 +706,29 @@ export class MessageIngestionService {
             ? 'failed'
             : 'pending';
 
+    const mediaData: any = {
+      mediaType: mediaInput.mediaType ?? context.mediaType ?? null,
+      caption: mediaInput.caption,
+      mime: mediaInput.mime,
+      fileName: mediaInput.fileName,
+      pathOrUrl: mediaInput.url,
+      thumbnailPathOrUrl: mediaInput.thumbnailUrl,
+      thumbnailBase64: mediaInput.thumbnailBase64,
+      providerMessageId: mediaInput.providerMessageId,
+      providerMediaId: mediaInput.providerMediaId,
+      mediaKey: mediaInput.mediaKey,
+      fetchStatus,
+      fetchError: mediaInput.error,
+      size: mediaInput.size,
+      status: mediaInput.url ? MediaStatus.pending : MediaStatus.failed,
+    };
+
     const media = await this.prisma.media.upsert({
       where: { messageId },
-      update: {
-        mediaType: mediaInput.mediaType,
-        caption: mediaInput.caption,
-        mime: mediaInput.mime,
-        fileName: mediaInput.fileName,
-        pathOrUrl: mediaInput.url,
-        thumbnailPathOrUrl: mediaInput.thumbnailUrl,
-        thumbnailBase64: mediaInput.thumbnailBase64,
-        providerMessageId: mediaInput.providerMessageId,
-        providerMediaId: mediaInput.providerMediaId,
-        mediaKey: mediaInput.mediaKey,
-        fetchStatus,
-        fetchError: mediaInput.error,
-        size: mediaInput.size,
-        status: mediaInput.url ? MediaStatus.pending : MediaStatus.failed,
-      },
+      update: mediaData,
       create: {
         messageId,
-        mediaType: mediaInput.mediaType,
-        caption: mediaInput.caption,
-        mime: mediaInput.mime,
-        fileName: mediaInput.fileName,
-        pathOrUrl: mediaInput.url,
-        thumbnailPathOrUrl: mediaInput.thumbnailUrl,
-        thumbnailBase64: mediaInput.thumbnailBase64,
-        providerMessageId: mediaInput.providerMessageId,
-        providerMediaId: mediaInput.providerMediaId,
-        mediaKey: mediaInput.mediaKey,
-        fetchStatus,
-        fetchError: mediaInput.error,
-        size: mediaInput.size,
-        status: mediaInput.url ? MediaStatus.pending : MediaStatus.failed,
+        ...mediaData,
       },
     });
 

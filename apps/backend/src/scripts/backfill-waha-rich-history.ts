@@ -83,23 +83,27 @@ async function main() {
       rawContact ?? conversation.contact,
     );
 
-    const nextConversationName = shouldReplaceDisplayName(
-      conversation.displayName,
-      desiredDisplayName,
-      conversation.type,
-      conversation.chatJid,
-    )
-      ? desiredDisplayName
-      : conversation.displayName;
+    const nextConversationName =
+      desiredDisplayName &&
+      shouldReplaceDisplayName(
+        conversation.displayName,
+        desiredDisplayName,
+        conversation.type,
+        conversation.chatJid,
+      )
+        ? desiredDisplayName
+        : conversation.displayName;
 
-    const nextContactName = shouldReplaceDisplayName(
-      conversation.contact.displayName,
-      desiredDisplayName,
-      conversation.type,
-      conversation.contact.whatsappJid,
-    )
-      ? desiredDisplayName
-      : conversation.contact.displayName;
+    const nextContactName =
+      desiredDisplayName &&
+      shouldReplaceDisplayName(
+        conversation.contact.displayName,
+        desiredDisplayName,
+        conversation.type,
+        conversation.contact.whatsappJid,
+      )
+        ? desiredDisplayName
+        : conversation.contact.displayName;
 
     const latestMessages = await prisma.message.findMany({
       where: { conversationId: conversation.id },
@@ -116,26 +120,6 @@ async function main() {
         caption: true,
         type: true,
         providerTimestamp: true,
-        media: {
-          select: {
-            id: true,
-            status: true,
-            mediaType: true,
-            caption: true,
-            mime: true,
-            fileName: true,
-            pathOrUrl: true,
-            thumbnailPathOrUrl: true,
-            thumbnailBase64: true,
-            providerMessageId: true,
-            providerMediaId: true,
-            mediaKey: true,
-            fetchStatus: true,
-            fetchError: true,
-            sha256: true,
-            size: true,
-          },
-        },
       },
     });
 
@@ -272,9 +256,9 @@ async function main() {
 }
 
 function buildParticipantChanges(
-  conversation: Awaited<ReturnType<typeof prisma.conversation.findFirst>> extends infer T
-    ? NonNullable<T>
-    : never,
+  conversation: {
+    type: ConversationType;
+  },
   normalizedMessages: ReturnType<typeof normalizeWahaMessage>[],
   currentMessages: Array<{
     id: string;
@@ -284,7 +268,7 @@ function buildParticipantChanges(
     body: string | null;
     caption: string | null;
     type: string;
-    providerTimestamp: Date;
+    providerTimestamp: Date | null;
   }>,
 ) {
   if (conversation.type !== ConversationType.group) {
@@ -317,25 +301,7 @@ function buildMessageChanges(
     body: string | null;
     caption: string | null;
     type: string;
-    providerTimestamp: Date;
-    media: {
-      id: string;
-      status: string;
-      mediaType: string | null;
-      caption: string | null;
-      mime: string | null;
-      fileName: string | null;
-      pathOrUrl: string | null;
-      thumbnailPathOrUrl: string | null;
-      thumbnailBase64: string | null;
-      providerMessageId: string | null;
-      providerMediaId: string | null;
-      mediaKey: string | null;
-      fetchStatus: string | null;
-      fetchError: string | null;
-      sha256: string | null;
-      size: number | null;
-    } | null;
+    providerTimestamp: Date | null;
   }>,
   normalizedMessages: ReturnType<typeof normalizeWahaMessage>[],
 ) {

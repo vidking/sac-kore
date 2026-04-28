@@ -80,11 +80,11 @@ export class WahaAdapterService {
     return null;
   }
 
-  async getGroupMetadata(sessionId: string, groupJid: string) {
+  async getGroupMetadata(sessionId: string, groupJid: string): Promise<any> {
     const jid = normalizeJid(groupJid);
     if (!jid) return null;
 
-    const metadata = await this.waha.getJson<Record<string, any>>(
+    const metadata: Record<string, any> = await this.waha.getJson<Record<string, any>>(
       `/api/${encodeURIComponent(sessionId)}/groups/${encodeURIComponent(jid)}`,
     );
 
@@ -273,7 +273,7 @@ export class WahaAdapterService {
   }
 
   private async resolveMediaSource(sessionId: string, messageIdOrMediaId: string) {
-    const media = await this.prisma.media.findFirst({
+    const media = (await this.prisma.media.findFirst({
       where: {
         OR: [
           { id: messageIdOrMediaId },
@@ -292,7 +292,7 @@ export class WahaAdapterService {
           },
         },
       },
-    });
+    })) as any;
 
     if (!media || media.message.conversation.channel.sessionName !== sessionId) {
       return null;

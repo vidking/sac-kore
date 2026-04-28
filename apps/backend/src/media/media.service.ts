@@ -12,6 +12,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { WahaService } from '../waha/waha.service';
 
+const richMediaSelect: any = {
+  id: true,
+  status: true,
+  mediaType: true,
+  caption: true,
+  mime: true,
+  fileName: true,
+  pathOrUrl: true,
+  thumbnailPathOrUrl: true,
+  thumbnailBase64: true,
+  providerMessageId: true,
+  providerMediaId: true,
+  mediaKey: true,
+  fetchStatus: true,
+  fetchError: true,
+  sha256: true,
+  size: true,
+};
+
 @Injectable()
 export class MediaService {
   constructor(
@@ -93,31 +112,12 @@ export class MediaService {
     actor: AuthUser,
     variant: 'media' | 'thumbnail' = 'media',
   ) {
-    const message = await this.prisma.message.findUnique({
+    const message = (await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {
-        media: {
-          select: {
-            id: true,
-            status: true,
-            mediaType: true,
-            caption: true,
-            mime: true,
-            fileName: true,
-            pathOrUrl: true,
-            thumbnailPathOrUrl: true,
-            thumbnailBase64: true,
-            providerMessageId: true,
-            providerMediaId: true,
-            mediaKey: true,
-            fetchStatus: true,
-            fetchError: true,
-            sha256: true,
-            size: true,
-          },
-        },
+        media: { select: richMediaSelect },
       },
-    });
+    })) as any;
 
     if (!message?.media) {
       throw new NotFoundException('Media not found');

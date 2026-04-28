@@ -12,7 +12,26 @@ import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { SyncLifecycleService } from '../sync/sync-lifecycle.service';
 import { WahaAdapterService } from '../waha/waha-adapter.service';
 
-const conversationPreviewInclude = {
+const richMediaSelect: any = {
+  id: true,
+  status: true,
+  mediaType: true,
+  caption: true,
+  mime: true,
+  fileName: true,
+  pathOrUrl: true,
+  thumbnailPathOrUrl: true,
+  thumbnailBase64: true,
+  providerMessageId: true,
+  providerMediaId: true,
+  mediaKey: true,
+  fetchStatus: true,
+  fetchError: true,
+  sha256: true,
+  size: true,
+};
+
+const conversationPreviewInclude: any = {
   channel: true,
   contact: {
     select: {
@@ -58,31 +77,12 @@ const conversationPreviewInclude = {
       createdAt: true,
       sequence: true,
       createdBy: { select: { id: true, name: true, email: true } },
-      media: {
-        select: {
-          id: true,
-          status: true,
-          mediaType: true,
-          caption: true,
-          mime: true,
-          fileName: true,
-          pathOrUrl: true,
-          thumbnailPathOrUrl: true,
-          thumbnailBase64: true,
-          providerMessageId: true,
-          providerMediaId: true,
-          mediaKey: true,
-          fetchStatus: true,
-          fetchError: true,
-          sha256: true,
-          size: true,
-        },
-      },
+      media: { select: richMediaSelect },
     },
   },
-} satisfies Prisma.ConversationInclude;
+};
 
-const messageDetailSelect = {
+const messageDetailSelect: any = {
   id: true,
   clientMessageId: true,
   externalMessageId: true,
@@ -110,27 +110,8 @@ const messageDetailSelect = {
       nextRetryAt: true,
     },
   },
-  media: {
-    select: {
-      id: true,
-      status: true,
-      mediaType: true,
-      caption: true,
-      mime: true,
-      fileName: true,
-      pathOrUrl: true,
-      thumbnailPathOrUrl: true,
-      thumbnailBase64: true,
-      providerMessageId: true,
-      providerMediaId: true,
-      mediaKey: true,
-      fetchStatus: true,
-      fetchError: true,
-      sha256: true,
-      size: true,
-    },
-  },
-} satisfies Prisma.MessageSelect;
+  media: { select: richMediaSelect },
+};
 
 @Injectable()
 export class ConversationService {
@@ -384,8 +365,10 @@ export class ConversationService {
           },
           current.contact,
         );
-    const normalizedMessages = (rawMessages ?? []).map((message) => normalizeWahaMessage(message));
-    const currentMessages = current.messages ?? [];
+    const normalizedMessages = ((rawMessages ?? []) as any[]).map((message) =>
+      normalizeWahaMessage(message),
+    );
+    const currentMessages = (current.messages ?? []) as any[];
 
     const missingDisplayName =
       isGenericDisplayName(current.displayName, current.type) &&
@@ -410,12 +393,12 @@ export class ConversationService {
       .filter((message) => Boolean(message.participantJid))
       .map((message) => {
         const currentMessage =
-          currentMessages.find((item) => item.externalMessageId === message.wahaMessageId) ??
-          currentMessages.find(
-            (item) =>
-              item.providerTimestamp?.getTime() === message.providerTimestamp.getTime() &&
-              item.body === message.body,
-          );
+          (currentMessages.find((item: any) => item.externalMessageId === message.wahaMessageId) ??
+            currentMessages.find(
+              (item: any) =>
+                item.providerTimestamp?.getTime() === message.providerTimestamp.getTime() &&
+                item.body === message.body,
+            )) as any;
 
         if (!currentMessage) {
           return null;
@@ -486,10 +469,8 @@ export class ConversationService {
         });
       }
 
-      const currentTimestamp = currentMessage.providerTimestamp ?? currentMessage.createdAt;
-      const diffMs = Math.abs(
-        currentTimestamp.getTime() - message.providerTimestamp.getTime(),
-      );
+      const currentTimestamp = (currentMessage.providerTimestamp ?? currentMessage.createdAt) as Date;
+      const diffMs = Math.abs(currentTimestamp.getTime() - (message.providerTimestamp as Date).getTime());
       if (diffMs > 2000) {
         timestampMismatch.push({
           messageId: currentMessage.id,
