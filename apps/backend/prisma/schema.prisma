@@ -1,0 +1,400 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChannelType {
+  whatsapp
+}
+
+enum ChannelProvider {
+  waha
+}
+
+enum ChannelStatus {
+  unknown
+  stopped
+  starting
+  scan_qr_code
+  working
+  failed
+  disconnected
+}
+
+enum ConversationStatus {
+  open
+  pending
+  closed
+}
+
+enum ConversationType {
+  direct
+  group
+  newsletter
+  broadcast
+  status
+  system
+  unknown
+}
+
+enum ChatSyncStatus {
+  pending
+  syncing
+  synced
+  failed
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageType {
+  text
+  image
+  audio
+  voice
+  document
+  video
+  sticker
+  reaction
+  system
+  unknown
+}
+
+enum AckStatus {
+  pending
+  server
+  device
+  read
+  played
+  error
+  unknown
+}
+
+enum MediaStatus {
+  pending
+  downloaded
+  failed
+  skipped
+}
+
+enum UserRole {
+  admin
+  agent
+}
+
+enum OutboxStatus {
+  queued
+  sending
+  sent
+  failed
+  retryable_failed
+  permanently_failed
+  reconciled
+  canceled
+}
+
+enum SyncStatus {
+  running
+  completed
+  failed
+  stale
+}
+
+model Channel {
+  id          String        @id @default(cuid())
+  type        ChannelType   @default(whatsapp)
+  provider    ChannelProvider @default(waha)
+  sessionName String        @unique @map("session_name")
+  status      ChannelStatus @default(unknown)
+  lastSyncAt  DateTime?     @map("last_sync_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+  messages      Message[]
+  outboxMessages OutboxMessage[]
+  syncRuns      SyncRun[]
+
+  @@map("channels")
+}
+
+model Contact {
+  id              String   @id @default(cuid())
+  phone           String?
+  whatsappJid     String   @unique @map("whatsapp_jid")
+  displayName     String?  @map("display_name")
+  profileMetadata Json?    @map("profile_metadata")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+
+  @@index([phone])
+  @@map("contacts")
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  channelId     String             @map("channel_id")
+  contactId     String             @map("contact_id")
+  chatJid       String             @map("chat_jid")
+  type          ConversationType   @default(unknown)
+  displayName   String?            @map("display_name")
+  pushName      String?            @map("push_name")
+  subject       String?
+  avatarUrl     String?            @map("avatar_url")
+  isArchived    Boolean            @default(false) @map("is_archived")
+  isPinned      Boolean            @default(false) @map("is_pinned")
+  syncStatus    ChatSyncStatus     @default(pending) @map("sync_status")
+  assignedTo    String?            @map("assigned_to")
+  status        ConversationStatus @default(open)
+  lastMessageAt DateTime?          @map("last_message_at")
+  unreadCount   Int                @default(0) @map("unread_count")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  assignedUser User? @relation("AssignedConversations", fields: [assignedTo], references: [id], onDelete: SetNull)
+  channel      Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  contact      Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  participants ChatParticipant[]
+  tags         ConversationTag[]
+  events       ConversationEvent[]
+  notes        InternalNote[]
+  outboxMessages OutboxMessage[]
+
+  @@unique([channelId, chatJid])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([lastMessageAt])
+  @@index([channelId, type, lastMessageAt])
+  @@index([chatJid])
+  @@map("conversations")
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  externalMessageId String           @map("external_message_id")
+  clientMessageId   String?          @map("client_message_id")
+  channelId         String           @map("channel_id")
+  conversationId    String           @map("conversation_id")
+  direction         MessageDirection
+  senderJid         String?          @map("sender_jid")
+  senderName        String?          @map("sender_name")
+  participantJid    String?          @map("participant_jid")
+  body              String?
+  caption           String?
+  type              MessageType      @default(text)
+  reactionEmoji     String?          @map("reaction_emoji")
+  reactionTargetExternalMessageId String? @map("reaction_target_external_message_id")
+  providerTimestamp DateTime?        @map("provider_timestamp")
+  sequence          Int              @unique @default(autoincrement())
+  ackStatus         AckStatus        @default(pending) @map("ack_status")
+  mediaId           String?          @map("media_id")
+  rawPayload        Json?            @map("raw_payload")
+  deletedAt         DateTime?        @map("deleted_at")
+  editedAt          DateTime?        @map("edited_at")
+  createdById       String?          @map("created_by_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  channel      Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy    User? @relation("CreatedMessages", fields: [createdById], references: [id], onDelete: SetNull)
+  media        Media?
+  outbox       OutboxMessage?
+
+  @@unique([channelId, externalMessageId])
+  @@unique([conversationId, clientMessageId])
+  @@index([clientMessageId])
+  @@index([conversationId, providerTimestamp, sequence])
+  @@index([channelId, senderJid])
+  @@index([participantJid])
+  @@index([ackStatus])
+  @@index([reactionTargetExternalMessageId])
+  @@map("messages")
+}
+
+model ChatParticipant {
+  id             String   @id @default(cuid())
+  channelId      String   @map("channel_id")
+  conversationId String   @map("conversation_id")
+  chatJid        String   @map("chat_jid")
+  participantJid String   @map("participant_jid")
+  displayName    String?  @map("display_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, chatJid, participantJid])
+  @@index([conversationId])
+  @@map("chat_participants")
+}
+
+model Media {
+  id         String      @id @default(cuid())
+  messageId  String      @unique @map("message_id")
+  mediaType  String?     @map("media_type")
+  caption    String?
+  mime       String?
+  fileName   String?     @map("file_name")
+  pathOrUrl  String?     @map("path_or_url")
+  thumbnailPathOrUrl String? @map("thumbnail_path_or_url")
+  thumbnailBase64 String? @map("thumbnail_base64")
+  providerMessageId String? @map("provider_message_id")
+  providerMediaId String? @map("provider_media_id")
+  mediaKey   String?     @map("media_key")
+  fetchStatus String     @default("pending") @map("fetch_status")
+  fetchError String?     @map("fetch_error")
+  sha256     String?
+  size       Int?
+  status     MediaStatus @default(pending)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("media")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  role         UserRole @default(agent)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  assignedConversations Conversation[] @relation("AssignedConversations")
+  createdMessages       Message[] @relation("CreatedMessages")
+  events                ConversationEvent[]
+  notes                 InternalNote[]
+  outboxMessages        OutboxMessage[]
+
+  @@map("users")
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  color String
+
+  conversations ConversationTag[]
+
+  @@map("tags")
+}
+
+model ConversationTag {
+  conversationId String @map("conversation_id")
+  tagId          String @map("tag_id")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, tagId])
+  @@map("conversation_tags")
+}
+
+model ConversationEvent {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  userId         String?  @map("user_id")
+  eventType      String   @map("event_type")
+  payload        Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@map("conversation_events")
+}
+
+model InternalNote {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  userId         String   @map("user_id")
+  body           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("internal_notes")
+}
+
+model OutboxMessage {
+  id             String       @id @default(cuid())
+  messageId      String       @unique @map("message_id")
+  channelId      String       @map("channel_id")
+  conversationId String       @map("conversation_id")
+  sessionName    String       @map("session_name")
+  chatJid        String       @map("chat_jid")
+  text           String
+  idempotencyKey String?      @unique @map("idempotency_key")
+  status         OutboxStatus @default(queued)
+  attempts       Int          @default(0)
+  lastError      String?      @map("last_error")
+  resultPayload  Json?        @map("result_payload")
+  createdById    String?      @map("created_by_id")
+  lockedAt       DateTime?    @map("locked_at")
+  lockedBy       String?      @map("locked_by")
+  lastAttemptAt  DateTime?    @map("last_attempt_at")
+  nextRetryAt    DateTime?    @map("next_retry_at")
+  reconciledAt   DateTime?    @map("reconciled_at")
+  resolvedAt     DateTime?    @map("resolved_at")
+  sentAt         DateTime?    @map("sent_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  message      Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel      Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy    User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([conversationId])
+  @@index([status, nextRetryAt])
+  @@map("outbox_messages")
+}
+
+model WebhookReceipt {
+  id        String   @id @default(cuid())
+  requestId String?  @unique @map("request_id")
+  event     String?
+  session   String?
+  rawPayload Json?   @map("raw_payload")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([event])
+  @@index([session])
+  @@map("webhook_receipts")
+}
+
+model SyncRun {
+  id           String     @id @default(cuid())
+  channelId    String     @map("channel_id")
+  sessionName  String     @map("session_name")
+  status       SyncStatus @default(running)
+  startedAt    DateTime   @default(now()) @map("started_at")
+  heartbeatAt  DateTime?  @map("heartbeat_at")
+  finishedAt   DateTime?  @map("finished_at")
+  chatsScanned Int        @default(0) @map("chats_scanned")
+  messagesSeen Int        @default(0) @map("messages_seen")
+  messagesNew  Int        @default(0) @map("messages_new")
+  error        String?
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([sessionName, startedAt])
+  @@map("sync_runs")
+}

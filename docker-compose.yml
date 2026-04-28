@@ -1,0 +1,190 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
+      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY_PLAIN:?WAHA_API_KEY_PLAIN is required}
+      WHATSAPP_HOOK_URL: ${WAHA_HOOK_URL:-http://backend:3001/api/webhooks/waha}
+      WHATSAPP_HOOK_EVENTS: ${WAHA_HOOK_EVENTS:-session.status,message,message.ack}
+      WHATSAPP_HOOK_HMAC_KEY: ${WAHA_WEBHOOK_HMAC_KEY:?WAHA_WEBHOOK_HMAC_KEY is required}
+      WHATSAPP_HOOK_RETRIES_POLICY: exponential
+      WHATSAPP_HOOK_RETRIES_DELAY_SECONDS: 2
+      WHATSAPP_HOOK_RETRIES_ATTEMPTS: 8
+      WHATSAPP_SWAGGER_USERNAME: ${WAHA_SWAGGER_USERNAME:?WAHA_SWAGGER_USERNAME is required}
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_SWAGGER_PASSWORD:?WAHA_SWAGGER_PASSWORD is required}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:?WAHA_DASHBOARD_USERNAME is required}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?WAHA_DASHBOARD_PASSWORD is required}
+    volumes:
+      - waha_sessions:/app/.sessions
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --header=\"X-Api-Key: ${WAHA_API_KEY_PLAIN}\" -q -O /dev/null http://localhost:3000/api/sessions"
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./apps/backend
+    restart: unless-stopped
+    command: node dist/src/main.js
+    environment:
+      SERVICE_NAME: backend
+      NODE_ENV: production
+      PORT: ${BACKEND_PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      REALTIME_REDIS_CHANNEL: ${REALTIME_REDIS_CHANNEL:-crm-realtime-events}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required}
+      WAHA_URL: ${WAHA_URL:-http://waha:3000}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
+      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY_PLAIN:?WAHA_API_KEY_PLAIN is required}
+      WAHA_WEBHOOK_HMAC_KEY: ${WAHA_WEBHOOK_HMAC_KEY:?WAHA_WEBHOOK_HMAC_KEY is required}
+      RESYNC_CHAT_LIMIT: ${RESYNC_CHAT_LIMIT:-10}
+      RESYNC_MESSAGES_PER_CHAT: ${RESYNC_MESSAGES_PER_CHAT:-20}
+      RESYNC_LOOKBACK_MINUTES: ${RESYNC_LOOKBACK_MINUTES:-1440}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/app/storage/media}
+      MAX_MEDIA_DOWNLOAD_BYTES: ${MAX_MEDIA_DOWNLOAD_BYTES:-26214400}
+      OUTBOX_RECOVERY_ON_START: ${OUTBOX_RECOVERY_ON_START:-false}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - media_data:/app/storage/media
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3001/api/health | grep -q '\"ok\":true'"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./apps/backend
+    restart: unless-stopped
+    command: node dist/src/worker.main.js
+    environment:
+      SERVICE_NAME: worker
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      REALTIME_REDIS_CHANNEL: ${REALTIME_REDIS_CHANNEL:-crm-realtime-events}
+      WAHA_URL: ${WAHA_URL:-http://waha:3000}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY is required}
+      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY_PLAIN:?WAHA_API_KEY_PLAIN is required}
+      WAHA_WEBHOOK_HMAC_KEY: ${WAHA_WEBHOOK_HMAC_KEY:?WAHA_WEBHOOK_HMAC_KEY is required}
+      RESYNC_CHAT_LIMIT: ${RESYNC_CHAT_LIMIT:-10}
+      RESYNC_MESSAGES_PER_CHAT: ${RESYNC_MESSAGES_PER_CHAT:-20}
+      RESYNC_LOOKBACK_MINUTES: ${RESYNC_LOOKBACK_MINUTES:-1440}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/app/storage/media}
+      MAX_MEDIA_DOWNLOAD_BYTES: ${MAX_MEDIA_DOWNLOAD_BYTES:-26214400}
+      OUTBOX_RECOVERY_ON_START: ${OUTBOX_RECOVERY_ON_START:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "node dist/src/scripts/runtime-healthcheck.js"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:3001}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ./apps/backend
+    command: sh -c "npm run prisma:migrate:deploy && npm run prisma:generate"
+    environment:
+      SERVICE_NAME: migrate
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["ops"]
+
+  seed:
+    build:
+      context: ./apps/backend
+    command: sh -c "npm run seed"
+    environment:
+      SERVICE_NAME: seed
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?SEED_ADMIN_EMAIL is required}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["ops"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  waha_sessions:
+  media_data:

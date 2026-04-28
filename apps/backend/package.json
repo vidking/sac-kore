@@ -1,0 +1,57 @@
+{
+  "name": "waha-crm-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/src/main.js",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/src/main.js",
+    "worker:dev": "nest start --entryFile worker.main --watch",
+    "worker:prod": "node dist/src/worker.main.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "seed": "tsx prisma/seed.ts",
+    "backfill:conversation-names": "tsx src/scripts/backfill-conversation-display-names.ts",
+    "backfill:waha-rich-history": "tsx src/scripts/backfill-waha-rich-history.ts",
+    "outbox:reconcile:failed": "tsx src/scripts/reconcile-failed-outbox.ts",
+    "health:worker": "node dist/src/scripts/runtime-healthcheck.js worker",
+    "health:backend": "node dist/src/scripts/runtime-healthcheck.js backend",
+    "lint": "tsc --noEmit",
+    "test:normalize": "tsx src/common/waha-normalize.test.ts"
+  },
+  "dependencies": {
+    "@nestjs/bullmq": "^10.2.3",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/platform-socket.io": "^10.4.15",
+    "@nestjs/websockets": "^10.4.15",
+    "@prisma/client": "^5.22.0",
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.34.5",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "ioredis": "^5.4.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.8",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
